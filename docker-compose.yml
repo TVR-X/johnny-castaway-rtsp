@@ -1,0 +1,57 @@
+# ══════════════════════════════════════════════════════════════════════
+#  Johnny Castaway RTSP Stream
+#  https://github.com/DEIN-USERNAME/johnny-castaway-rtsp
+#
+#  Setup:
+#    1. mkdir -p screensaver
+#    2. cp /pfad/zu/johnny.scr screensaver/
+#    3. docker compose up -d
+#
+#  Stream:   rtsp://<HOST-IP>:8554/johnny
+#  HLS:      http://<HOST-IP>:8888/johnny
+# ══════════════════════════════════════════════════════════════════════
+
+services:
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    restart: unless-stopped
+    environment:
+      - MTX_PROTOCOLS=tcp
+      - MTX_LOGLEVEL=warn
+    ports:
+      - "8554:8554"    # RTSP
+      - "8888:8888"    # HLS  (Browser: http://<IP>:8888/johnny)
+      - "9997:9997"    # API  (intern genutzt für Healthcheck)
+    networks:
+      - johnny-net
+
+  johnny:
+    build:
+      # Image wird direkt aus GitHub gebaut – kein lokales Clonen nötig
+      context: https://github.com/DEIN-USERNAME/johnny-castaway-rtsp.git#main
+    image: johnny-castaway:local   # wird nach erstem Build gecacht
+    container_name: johnny-castaway
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+    volumes:
+      # Lege deine johnny.scr in den screensaver/ Ordner
+      - ./screensaver:/screensaver:ro
+    environment:
+      - SCR_FILE=/screensaver/johnny.scr
+      - RTSP_URL=rtsp://mediamtx:8554/johnny
+      - MEDIAMTX_HOST=mediamtx
+      - MEDIAMTX_PORT=9997
+      # Optional anpassbar:
+      - WIDTH=640
+      - HEIGHT=480
+      - FPS=10          # Niedrig = weniger CPU, Screensaver braucht keine 30fps
+      - BITRATE=300k
+    networks:
+      - johnny-net
+
+networks:
+  johnny-net:
+    driver: bridge
