@@ -30,7 +30,7 @@ services:
   johnny:
     build:
       # Image wird direkt aus GitHub gebaut – kein lokales Clonen nötig
-      context: https://github.com/DEIN-USERNAME/johnny-castaway-rtsp.git#main
+      context: https://github.com/TVR-X/johnny-castaway-rtsp.git#main
     image: johnny-castaway:local   # wird nach erstem Build gecacht
     container_name: johnny-castaway
     restart: unless-stopped
