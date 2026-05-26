@@ -301,7 +301,10 @@ ExecStop=/bin/bash -c 'wineserver -k 2>/dev/null || true'
 KillMode=control-group
 TimeoutStopSec=15
 CPUQuota=10%
-Nice=10
+Nice=19
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+IOSchedulingPriority=7
 Restart=always
 RestartSec=10
 
