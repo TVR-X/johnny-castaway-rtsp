@@ -1,10 +1,10 @@
 #!/bin/bash
 # ══════════════════════════════════════════════════════════════════════
-#  Johnny Castaway RTSP – Komplettes Install-Script
-#  Getestet auf: Ubuntu/Debian LXC (Proxmox)
+#  Johnny Castaway RTSP – Install Script
+#  Getestet auf: Ubuntu 26.04 LXC (Proxmox)
 #
 #  Aufruf:
-#    bash <(curl -fsSL https://raw.githubusercontent.com/TVR-X/johnny-castaway-rtsp/main/install.sh)
+#    apt install curl -y && bash <(curl -fsSL https://raw.githubusercontent.com/TVR-X/johnny-castaway-rtsp/main/install.sh)
 #
 #  Nach Installation:
 #    cp /pfad/zu/johnny.scr /opt/johnny-castaway/screensaver/
@@ -52,10 +52,10 @@ section "System-Pakete"
 # ══════════════════════════════════════════════════════════════════════
 info "32-Bit-Architektur aktivieren..."
 dpkg --add-architecture i386
-apt-get update -qq
+apt-get -qq -o Dpkg::Use-Pty=0 update
 
 info "Pakete installieren..."
-apt-get install -y --no-install-recommends \
+apt-get -qq -o Dpkg::Use-Pty=0 install -y --no-install-recommends \
     wine \
     wine32:i386 \
     libwine:i386 \
@@ -72,9 +72,7 @@ apt-get install -y --no-install-recommends \
     libxi6:i386 \
     libxcursor1:i386 \
     libxcomposite1:i386 \
-    libxinerama1:i386 \
-    2>/dev/null
-
+    libxinerama1:i386
 log "Pakete installiert"
 
 # ══════════════════════════════════════════════════════════════════════
@@ -171,7 +169,7 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-# FFmpeg → RTSP (mit stillem Audiotrack für Player-Kompatibilität)
+# FFmpeg → RTSP
 HOST_IP=$(hostname -I | awk '{print $1}')
 log "Stream → rtsp://${HOST_IP}:8554/johnny"
 log "HLS   → http://${HOST_IP}:8888/johnny"
@@ -192,7 +190,6 @@ ffmpeg -loglevel warning \
     -g $(( FPS * 2 )) \
     -acodec aac \
     -b:a 32k \
-    -shortest \
     -f rtsp \
     -rtsp_transport tcp \
     "${RTSP_URL}"
@@ -262,7 +259,7 @@ EOF
 log "Services geschrieben"
 
 # ══════════════════════════════════════════════════════════════════════
-section "Services aktivieren"
+section "Services aktivieren & starten"
 # ══════════════════════════════════════════════════════════════════════
 systemctl daemon-reload
 systemctl enable xvfb mediamtx johnny-castaway
@@ -287,8 +284,8 @@ echo -e "  Stream-URLs (sobald gestartet):"
 echo -e "  ${GREEN}RTSP:${NC} rtsp://${HOST_IP}:${RTSP_PORT}/johnny"
 echo -e "  ${GREEN}HLS: ${NC} http://${HOST_IP}:${HLS_PORT}/johnny"
 echo ""
-echo -e "  Befehle:"
-echo -e "  ${CYAN}systemctl status johnny-castaway${NC}"
-echo -e "  ${CYAN}journalctl -u johnny-castaway -f${NC}"
-echo -e "  ${CYAN}systemctl restart johnny-castaway${NC}"
+echo -e "  Nützliche Befehle:"
+echo -e "  ${CYAN}systemctl status johnny-castaway${NC}   Status"
+echo -e "  ${CYAN}journalctl -u johnny-castaway -f${NC}   Logs"
+echo -e "  ${CYAN}systemctl restart johnny-castaway${NC}  Neustart"
 echo -e "${GREEN}══════════════════════════════════════════════════${NC}"
