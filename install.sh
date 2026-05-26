@@ -4,7 +4,8 @@
 #  Getestet auf: Ubuntu 26.04 LXC (Proxmox)
 #
 #  Aufruf:
-#    apt install curl -y && bash <(curl -fsSL https://raw.githubusercontent.com/TVR-X/johnny-castaway-rtsp/main/install.sh)
+#    apt-get -qq -o Dpkg::Use-Pty=0 install -y curl > /dev/null && \
+#    bash <(curl -fsSL https://raw.githubusercontent.com/TVR-X/johnny-castaway-rtsp/main/install.sh)
 #
 #  Nach Installation:
 #    cp /pfad/zu/johnny.scr /opt/johnny-castaway/screensaver/
@@ -12,12 +13,13 @@
 # ══════════════════════════════════════════════════════════════════════
 set -e
 
+export DEBIAN_FRONTEND=noninteractive
+
 # ── Farben ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; NC='\033[0m'
 log()     { echo -e "${GREEN}[✓]${NC} $*"; }
 info()    { echo -e "${CYAN}[…]${NC} $*"; }
-warn()    { echo -e "${YELLOW}[!]${NC} $*"; }
 err()     { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 section() { echo -e "\n${CYAN}━━━ $* ━━━${NC}"; }
 
@@ -28,19 +30,16 @@ MEDIAMTX_VERSION="v1.9.1"
 MEDIAMTX_DIR="/opt/mediamtx"
 WIDTH=640
 HEIGHT=480
-FPS=10
+FPS=15
 BITRATE="300k"
 RTSP_PORT=8554
 HLS_PORT=8888
 API_PORT=9997
 
-export DEBIAN_FRONTEND=noninteractive
-
 # ── Checks ────────────────────────────────────────────────────────────
 [ "$(id -u)" -eq 0 ] || err "Bitte als root ausführen"
 grep -qiE "debian|ubuntu" /etc/os-release 2>/dev/null || err "Nur Debian/Ubuntu unterstützt"
 
-# ── Architektur ───────────────────────────────────────────────────────
 ARCH="$(uname -m)"
 case "$ARCH" in
     x86_64)  MTX_ARCH="amd64" ;;
@@ -63,6 +62,7 @@ apt-get -qq -o Dpkg::Use-Pty=0 install -y --no-install-recommends \
     libwine:i386 \
     xvfb \
     ffmpeg \
+    pulseaudio \
     wget \
     curl \
     procps \
@@ -80,11 +80,11 @@ log "Pakete installiert"
 # ══════════════════════════════════════════════════════════════════════
 section "MediaMTX ${MEDIAMTX_VERSION}"
 # ══════════════════════════════════════════════════════════════════════
-MTX_URL="https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_${MTX_ARCH}.tar.gz"
-
 info "Lade MediaMTX (${MTX_ARCH})..."
 mkdir -p "${MEDIAMTX_DIR}"
-wget -q --show-progress -O /tmp/mediamtx.tar.gz "${MTX_URL}"
+wget -q --show-progress \
+    -O /tmp/mediamtx.tar.gz \
+    "https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_${MTX_ARCH}.tar.gz"
 tar -xzf /tmp/mediamtx.tar.gz -C "${MEDIAMTX_DIR}"
 rm /tmp/mediamtx.tar.gz
 chmod +x "${MEDIAMTX_DIR}/mediamtx"
@@ -105,11 +105,32 @@ EOF
 log "MediaMTX konfiguriert"
 
 # ══════════════════════════════════════════════════════════════════════
+section "PulseAudio"
+# ══════════════════════════════════════════════════════════════════════
+mkdir -p /root/.config/pulse
+
+cat > /root/.config/pulse/default.pa << 'EOF'
+load-module module-pipe-sink sink_name=virtual_out file=/tmp/audio.pipe format=u8 rate=11025 channels=1
+set-default-sink virtual_out
+load-module module-native-protocol-unix
+EOF
+
+cat > /root/.config/pulse/daemon.conf << 'EOF'
+exit-idle-time = -1
+default-fragments = 2
+default-fragment-size-msec = 5
+resample-method = trivial
+default-sample-rate = 11025
+alternate-sample-rate = 11025
+EOF
+log "PulseAudio konfiguriert"
+
+# ══════════════════════════════════════════════════════════════════════
 section "Verzeichnisse"
 # ══════════════════════════════════════════════════════════════════════
 mkdir -p "${SCREENSAVER_DIR}"
-mkdir -p "/root/.wine"
-log "Verzeichnisse angelegt: ${SCREENSAVER_DIR}"
+mkdir -p /root/.wine
+log "Verzeichnisse angelegt"
 
 # ══════════════════════════════════════════════════════════════════════
 section "start.sh"
@@ -122,13 +143,16 @@ SCR_FILE="${SCR_FILE:-/opt/johnny-castaway/screensaver/johnny.scr}"
 RTSP_URL="${RTSP_URL:-rtsp://127.0.0.1:8554/johnny}"
 WIDTH="${WIDTH:-640}"
 HEIGHT="${HEIGHT:-480}"
-FPS="${FPS:-10}"
+FPS="${FPS:-15}"
 BITRATE="${BITRATE:-300k}"
 
 export DISPLAY=:99
 export WINEPREFIX=/root/.wine
 export WINEARCH=win32
 export WINEDLLOVERRIDES="mscoree,mshtml="
+export WINEDEBUG=err-vulkan,err-system
+export XDG_RUNTIME_DIR=/tmp/pulse-runtime
+export PULSE_SERVER=unix:/tmp/pulse-runtime/pulse/native
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 log()  { echo -e "${GREEN}[johnny]${NC} $*"; }
@@ -139,16 +163,34 @@ err()  { echo -e "${RED}[johnny]${NC} $*"; }
 if [ ! -f "${SCR_FILE}" ]; then
     err "──────────────────────────────────────────────"
     err " FEHLER: Screensaver nicht gefunden!"
-    err ""
-    err " Bitte kopiere deine johnny.scr hierhin:"
     err "   /opt/johnny-castaway/screensaver/johnny.scr"
-    err ""
-    err " Dann:"
-    err "   systemctl start johnny-castaway"
+    err " Dann: systemctl start johnny-castaway"
     err "──────────────────────────────────────────────"
     exit 1
 fi
 log "Screensaver: ${SCR_FILE}"
+
+# Audio-Pipe vorbereiten
+rm -f /tmp/audio.pipe
+mkfifo /tmp/audio.pipe
+log "Audio-Pipe erstellt"
+
+# PulseAudio starten
+log "Starte PulseAudio..."
+pulseaudio --kill 2>/dev/null || true
+sleep 1
+mkdir -p "${XDG_RUNTIME_DIR}"
+pulseaudio --exit-idle-time=-1 --disallow-exit &
+PULSE_PID=$!
+
+# Warten bis Sink bereit
+RETRIES=0
+until pactl list short sinks 2>/dev/null | grep -q "virtual_out"; do
+    RETRIES=$((RETRIES+1))
+    [ $RETRIES -ge 15 ] && { err "PulseAudio Timeout"; exit 1; }
+    sleep 1
+done
+log "PulseAudio bereit"
 
 # Wine-Prefix initialisieren (nur einmalig)
 if [ ! -d "${WINEPREFIX}/drive_c" ]; then
@@ -156,6 +198,10 @@ if [ ! -d "${WINEPREFIX}/drive_c" ]; then
     wineboot --init 2>/dev/null || true
     sleep 8
 fi
+
+# Wine auf PulseAudio-Treiber setzen
+wine reg add "HKCU\Software\Wine\Drivers" \
+    /v Audio /t REG_SZ /d pulse /f 2>/dev/null || true
 
 # Johnny Castaway starten
 log "Starte Johnny Castaway..."
@@ -168,6 +214,9 @@ cleanup() {
     warn "Shutdown..."
     wineserver -k 2>/dev/null || true
     kill "${WINE_PID}" 2>/dev/null || true
+    kill "${PULSE_PID}" 2>/dev/null || true
+    pulseaudio --kill 2>/dev/null || true
+    rm -f /tmp/audio.pipe
 }
 trap cleanup SIGTERM SIGINT
 
@@ -181,7 +230,10 @@ ffmpeg -loglevel warning \
     -r "${FPS}" \
     -s "${WIDTH}x${HEIGHT}" \
     -i :99.0 \
-    -f lavfi -i anullsrc=r=44100:cl=mono \
+    -f u8 \
+    -ar 11025 \
+    -ac 1 \
+    -i /tmp/audio.pipe \
     -vcodec libx264 \
     -preset ultrafast \
     -tune animation \
@@ -204,7 +256,6 @@ log "start.sh erstellt"
 section "systemd Services"
 # ══════════════════════════════════════════════════════════════════════
 
-# Xvfb – eigener stabiler Service
 cat > /etc/systemd/system/xvfb.service << EOF
 [Unit]
 Description=Xvfb Virtual Display :99
@@ -221,7 +272,6 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
-# MediaMTX
 cat > /etc/systemd/system/mediamtx.service << EOF
 [Unit]
 Description=MediaMTX RTSP Server
@@ -237,7 +287,6 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# Johnny Castaway
 cat > /etc/systemd/system/johnny-castaway.service << EOF
 [Unit]
 Description=Johnny Castaway RTSP Stream
@@ -251,7 +300,7 @@ ExecStart=${INSTALL_DIR}/start.sh
 ExecStop=/bin/bash -c 'wineserver -k 2>/dev/null || true'
 KillMode=control-group
 TimeoutStopSec=15
-CPUQuota=25%
+CPUQuota=10%
 Nice=10
 Restart=always
 RestartSec=10
