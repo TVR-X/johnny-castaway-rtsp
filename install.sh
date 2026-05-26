@@ -251,6 +251,8 @@ ExecStart=${INSTALL_DIR}/start.sh
 ExecStop=/bin/bash -c 'wineserver -k 2>/dev/null || true'
 KillMode=control-group
 TimeoutStopSec=15
+CPUQuota=25%
+Nice=10
 Restart=always
 RestartSec=10
 
