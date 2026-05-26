@@ -34,6 +34,8 @@ RTSP_PORT=8554
 HLS_PORT=8888
 API_PORT=9997
 
+export DEBIAN_FRONTEND=noninteractive
+
 # ── Checks ────────────────────────────────────────────────────────────
 [ "$(id -u)" -eq 0 ] || err "Bitte als root ausführen"
 grep -qiE "debian|ubuntu" /etc/os-release 2>/dev/null || err "Nur Debian/Ubuntu unterstützt"
@@ -52,7 +54,7 @@ section "System-Pakete"
 # ══════════════════════════════════════════════════════════════════════
 info "32-Bit-Architektur aktivieren..."
 dpkg --add-architecture i386
-apt-get -qq -o Dpkg::Use-Pty=0 update
+apt-get -qq -o Dpkg::Use-Pty=0 update > /dev/null
 
 info "Pakete installieren..."
 apt-get -qq -o Dpkg::Use-Pty=0 install -y --no-install-recommends \
@@ -72,7 +74,7 @@ apt-get -qq -o Dpkg::Use-Pty=0 install -y --no-install-recommends \
     libxi6:i386 \
     libxcursor1:i386 \
     libxcomposite1:i386 \
-    libxinerama1:i386
+    libxinerama1:i386 > /dev/null
 log "Pakete installiert"
 
 # ══════════════════════════════════════════════════════════════════════
